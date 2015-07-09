@@ -6,20 +6,19 @@
 //!
 //! ```rust
 //! # #[macro_use] extern crate hierachical_log;
-//! # #[macro_use] extern crate log;
 //! # extern crate env_logger;
 //!
 //! fn main () {
 //!     env_logger::init().unwrap();
 //!
-//!     meta_info!("1");
+//!     info!("1");
 //!     {
 //!         register_logger_info!("Test");
-//!         meta_info!("2");
+//!         info!("2");
 //!         register_logger_info!("Testing");
 //!         Foo.foo();
 //!     }
-//!     meta_info!("4");
+//!     info!("4");
 //! }
 //!
 //! #[derive(Debug)]
@@ -28,12 +27,14 @@
 //! impl Foo {
 //!     fn foo(&self) {
 //!         register_logger_info!("{:?}", self);
-//!         meta_info!("3");
+//!         info!("3");
 //!     }
 //! }
 //! ```
 
-#[macro_use] extern crate log;
+#![feature(macro_reexport)]
+
+#[macro_reexport(error,warn,info,debug,trace)] extern crate log;
 
 pub use log::*;
 
@@ -59,13 +60,34 @@ macro_rules! register_logger_info {
 }
 
 #[macro_export]
-macro_rules! meta_log {
+macro_rules! original_log {
+    (target: $target:expr, $lvl:expr, $($arg:tt)+) => ({
+        static _LOC: $crate::LogLocation = $crate::LogLocation {
+            __line: line!(),
+            __file: file!(),
+            __module_path: module_path!(),
+        };
+        let lvl = $lvl;
+        if !cfg!(log_level = "off") &&
+                (lvl <= $crate::LogLevel::Error || !cfg!(log_level = "error")) &&
+                (lvl <= $crate::LogLevel::Warn || !cfg!(log_level = "warn")) &&
+                (lvl <= $crate::LogLevel::Debug || !cfg!(log_level = "debug")) &&
+                (lvl <= $crate::LogLevel::Info || !cfg!(log_level = "info")) &&
+                lvl <= $crate::max_log_level() {
+            $crate::__log(lvl, $target, &_LOC, format_args!($($arg)+))
+        }
+    });
+    ($lvl:expr, $($arg:tt)+) => (original_log!(target: module_path!(), $lvl, $($arg)+))
+}
+
+#[macro_export]
+macro_rules! log {
     (target: $target:expr, $lvl:expr, $($arg:tt)+) => (
         {
             let vec = $crate::__LOG_METAINFO.with(|f| f.borrow().clone());
             match vec.len() {
-                0 => log!(target: $target, $lvl, $($arg)+),
-                _ => log!(target: $target, $lvl, "{}: {}", vec.connect(": "), format!($($arg)+)),
+                0 => original_log!(target: $target, $lvl, $($arg)+),
+                _ => original_log!(target: $target, $lvl, "{}: {}", vec.connect(": "), format!($($arg)+)),
             }
         }
     );
@@ -73,8 +95,8 @@ macro_rules! meta_log {
         {
             let vec = $crate::__LOG_METAINFO.with(|f| f.borrow().clone());
             match vec.len() {
-                0 => log!($lvl, $($arg)+),
-                _ => log!($lvl, "{}: {}", vec.connect(": "), format!($($arg)+)),
+                0 => original_log!($lvl, $($arg)+),
+                _ => original_log!($lvl, "{}: {}", vec.connect(": "), format!($($arg)+)),
             }
         }
     )
@@ -100,54 +122,4 @@ macro_rules! meta_assert {
             }
         }
     );
-}
-
-#[macro_export]
-macro_rules! meta_error {
-    (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, $crate::LogLevel::Error, $($arg)*);
-    );
-    ($($arg:tt)*) => (
-        meta_log!($crate::LogLevel::Error, $($arg)*);
-    )
-}
-
-#[macro_export]
-macro_rules! meta_warn {
-    (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, $crate::LogLevel::Warn, $($arg)*);
-    );
-    ($($arg:tt)*) => (
-        meta_log!($crate::LogLevel::Warn, $($arg)*);
-    )
-}
-
-#[macro_export]
-macro_rules! meta_info {
-    (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, $crate::LogLevel::Info, $($arg)*);
-    );
-    ($($arg:tt)*) => (
-        meta_log!($crate::LogLevel::Info, $($arg)*);
-    )
-}
-
-#[macro_export]
-macro_rules! meta_debug {
-    (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, $crate::LogLevel::Debug, $($arg)*);
-    );
-    ($($arg:tt)*) => (
-        meta_log!($crate::LogLevel::Debug, $($arg)*);
-    )
-}
-
-#[macro_export]
-macro_rules! meta_trace {
-    (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, $crate::LogLevel::Trace, $($arg)*);
-    );
-    ($($arg:tt)*) => (
-        meta_log!($crate::LogLevel::Trace, $($arg)*);
-    )
 }
