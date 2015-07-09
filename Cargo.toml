@@ -1,0 +1,10 @@
+[package]
+name = "hierachical_log"
+version = "0.1.0"
+authors = ["James McGlashan <github@darkfox.id.au>"]
+
+[dependencies]
+log = "*"
+
+[dev-dependencies]
+env_logger = "*"
