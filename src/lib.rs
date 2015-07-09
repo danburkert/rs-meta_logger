@@ -17,13 +17,19 @@
 //!         register_logger_info!("Test");
 //!         meta_info!("2");
 //!         register_logger_info!("Testing");
-//!         foo();
+//!         Foo.foo();
 //!     }
 //!     meta_info!("4");
 //! }
 //!
-//! fn foo() {
-//!     meta_info!("3");
+//! #[derive(Debug)]
+//! struct Foo;
+//!
+//! impl Foo {
+//!     fn foo(&self) {
+//!         register_logger_info!("{:?}", self);
+//!         meta_info!("3");
+//!     }
 //! }
 //! ```
 
@@ -33,7 +39,7 @@ pub use log::*;
 
 use std::cell::RefCell;
 
-thread_local!(pub static __LOG_METAINFO: RefCell<Vec<&'static str>> = RefCell::new(Vec::new()));
+thread_local!(pub static __LOG_METAINFO: RefCell<Vec<String>> = RefCell::new(Vec::new()));
 
 pub struct HierachicalLogScope;
 
@@ -49,6 +55,7 @@ macro_rules! register_logger_info {
         $crate::__LOG_METAINFO.with(|f| f.borrow_mut().push($message));
         let __logger_scoped_message = $crate::HierachicalLogScope
     );
+    ($($arg:tt)+) => (register_logger_info!(format!($($arg)+)));
 }
 
 #[macro_export]
