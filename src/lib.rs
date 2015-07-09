@@ -52,7 +52,7 @@ impl Drop for HierachicalLogScope {
 #[macro_export]
 macro_rules! register_logger_info {
     ($message:expr) => (
-        $crate::__LOG_METAINFO.with(|f| f.borrow_mut().push($message));
+        $crate::__LOG_METAINFO.with(|f| f.borrow_mut().push(String::from($message)));
         let __logger_scoped_message = $crate::HierachicalLogScope
     );
     ($($arg:tt)+) => (register_logger_info!(format!($($arg)+)));
@@ -78,6 +78,28 @@ macro_rules! meta_log {
             }
         }
     )
+}
+
+#[macro_export]
+macro_rules! meta_assert {
+    ($condition:expr) => (
+        if !$condition {
+            let vec = $crate::__LOG_METAINFO.with(|f| f.borrow().clone());
+            match vec.len() {
+                0 => panic!(stringify!($condition)),
+                _ => panic!("{}: {}", vec.connect(": "), stringify!($condition)),
+            }
+        }
+    );
+    ($condition:expr, $($arg:tt)+) => (
+        if !$condition {
+            let vec = $crate::__LOG_METAINFO.with(|f| f.borrow().clone());
+            match vec.len() {
+                0 => panic!($($arg)+),
+                _ => panic!("{}: {}", vec.connect(": "), format!($($arg)+)),
+            }
+        }
+    );
 }
 
 #[macro_export]
