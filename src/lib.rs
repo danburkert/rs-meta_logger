@@ -29,6 +29,8 @@
 
 #[macro_use] extern crate log;
 
+pub use log::*;
+
 use std::cell::RefCell;
 
 thread_local!(pub static __LOG_METAINFO: RefCell<Vec<&'static str>> = RefCell::new(Vec::new()));
@@ -74,49 +76,49 @@ macro_rules! meta_log {
 #[macro_export]
 macro_rules! meta_error {
     (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, log::LogLevel::Error, $($arg)*);
+        meta_log!(target: $target, $crate::LogLevel::Error, $($arg)*);
     );
     ($($arg:tt)*) => (
-        meta_log!(log::LogLevel::Error, $($arg)*);
+        meta_log!($crate::LogLevel::Error, $($arg)*);
     )
 }
 
 #[macro_export]
 macro_rules! meta_warn {
     (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, log::LogLevel::Warn, $($arg)*);
+        meta_log!(target: $target, $crate::LogLevel::Warn, $($arg)*);
     );
     ($($arg:tt)*) => (
-        meta_log!(log::LogLevel::Warn, $($arg)*);
+        meta_log!($crate::LogLevel::Warn, $($arg)*);
     )
 }
 
 #[macro_export]
 macro_rules! meta_info {
     (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, log::LogLevel::Info, $($arg)*);
+        meta_log!(target: $target, $crate::LogLevel::Info, $($arg)*);
     );
     ($($arg:tt)*) => (
-        meta_log!(log::LogLevel::Info, $($arg)*);
+        meta_log!($crate::LogLevel::Info, $($arg)*);
     )
 }
 
 #[macro_export]
 macro_rules! meta_debug {
     (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, log::LogLevel::Debug, $($arg)*);
+        meta_log!(target: $target, $crate::LogLevel::Debug, $($arg)*);
     );
     ($($arg:tt)*) => (
-        meta_log!(log::LogLevel::Debug, $($arg)*);
+        meta_log!($crate::LogLevel::Debug, $($arg)*);
     )
 }
 
 #[macro_export]
 macro_rules! meta_trace {
     (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, log::LogLevel::Trace, $($arg)*);
+        meta_log!(target: $target, $crate::LogLevel::Trace, $($arg)*);
     );
     ($($arg:tt)*) => (
-        meta_log!(log::LogLevel::Trace, $($arg)*);
+        meta_log!($crate::LogLevel::Trace, $($arg)*);
     )
 }
