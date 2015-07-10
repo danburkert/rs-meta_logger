@@ -74,13 +74,15 @@ macro_rules! log {
                 (lvl <= $crate::LogLevel::Debug || !cfg!(log_level = "debug")) &&
                 (lvl <= $crate::LogLevel::Info || !cfg!(log_level = "info")) &&
                 lvl <= $crate::max_log_level() {
-            let target = $crate::__LOG_METAINFO.with(|vec| {
-                    match vec.borrow().len() {
-                        0 => $target,
-                        _ => format!("{}: {}", vec.borrow().connect(": "), $target).as_str(),
-                    }
-                });
-            $crate::__log(lvl, target, &_LOC, format_args!($($arg)+))
+            $crate::__LOG_METAINFO.with(|vec| {
+                if vec.borrow().is_empty() {
+                    $crate::__log(lvl, $target, &_LOC, format_args!($($arg)+))
+                } else {
+                    $crate::__log(lvl, $target, &_LOC, format_args!("{}: {}",
+                                                                    vec.borrow().connect(": "),
+                                                                    format_args!($($arg)+)))
+                }
+            })
         }
     });
     ($lvl:expr, $($arg:tt)+) => (log!(target: module_path!(), $lvl, $($arg)+))
