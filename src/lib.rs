@@ -1,25 +1,25 @@
 //! Simple wrapper for the log crate that enables adding arbitrary information at runtime for
 //! future calls to the debugging macros.
 //!
-//! That magic behind this is a thread_local RefCell<Vec<&'static str>> which when populated will
+//! That magic behind this is a thread_local RefCell<Vec<String>> which when populated will
 //! include the included identifiers, seperated with ": ".
 //!
 //! ```rust
-//! # #[macro_use] extern crate hierachical_log;
-//! # #[macro_use] extern crate log;
-//! # extern crate env_logger;
+//! #[macro_use] extern crate log;
+//! #[macro_use] extern crate scoped_log;
+//! extern crate env_logger;
 //!
 //! fn main () {
 //!     env_logger::init().unwrap();
 //!
-//!     meta_info!("1");
+//!     scoped_info!("1");
 //!     {
-//!         register_logger_info!("Test");
-//!         meta_info!("2");
-//!         register_logger_info!("Testing");
+//!         push_log_scope!("Test");
+//!         scoped_info!("2");
+//!         push_log_scope!("Testing");
 //!         Foo.foo();
 //!     }
-//!     meta_info!("4");
+//!     scoped_info!("4");
 //! }
 //!
 //! #[derive(Debug)]
@@ -27,127 +27,142 @@
 //!
 //! impl Foo {
 //!     fn foo(&self) {
-//!         register_logger_info!("{:?}", self);
-//!         meta_info!("3");
+//!         push_log_scope!("{:?}", self);
+//!         scoped_info!("3");
 //!     }
 //! }
 //! ```
 
 #[macro_use] extern crate log;
 
-pub use log::*;
-
 use std::cell::RefCell;
 
-thread_local!(pub static __LOG_METAINFO: RefCell<Vec<String>> = RefCell::new(Vec::new()));
+thread_local!(pub static __LOG_SCOPES: RefCell<Vec<String>> = RefCell::new(Vec::new()));
 
-pub struct HierachicalLogScope;
+pub struct Scope;
 
-impl Drop for HierachicalLogScope {
+impl Drop for Scope {
     fn drop(&mut self) {
-        __LOG_METAINFO.with(|f| f.borrow_mut().pop());
+        if !cfg!(log_level = "off") {
+            __LOG_SCOPES.with(|f| f.borrow_mut().pop());
+        }
     }
 }
 
 #[macro_export]
-macro_rules! register_logger_info {
-    ($message:expr) => (
-        $crate::__LOG_METAINFO.with(|f| f.borrow_mut().push(String::from($message)));
-        let __logger_scoped_message = $crate::HierachicalLogScope
+macro_rules! push_log_scope {
+    ($scope:expr) => (
+        if !cfg!(log_level = "off") {
+            $crate::__LOG_SCOPES.with(|cell| {
+                let mut scopes = cell.borrow_mut();
+                match scopes.len() {
+                    0 => scopes.push(format!("{}", $scope)),
+                    len => {
+                        let scope = format!("{}: {}", scopes[len - 1], $scope);
+                        scopes.push(scope);
+                    }
+                }
+            });
+        }
+        let __logger_scoped_message = $crate::Scope
     );
-    ($($arg:tt)+) => (register_logger_info!(format!($($arg)+)));
+    ($($arg:tt)+) => (push_log_scope!(format_args!($($arg)+)));
 }
 
 #[macro_export]
-macro_rules! meta_log {
-    (target: $target:expr, $lvl:expr, $($arg:tt)+) => (
-        {
-            let vec = $crate::__LOG_METAINFO.with(|f| f.borrow().clone());
-            match vec.len() {
+macro_rules! scoped_log {
+    (target: $target:expr, $lvl:expr, $($arg:tt)+) => ({
+        $crate::__LOG_SCOPES.with(|cell| {
+            let scopes = cell.borrow();
+            match scopes.len() {
                 0 => log!(target: $target, $lvl, $($arg)+),
-                _ => log!(target: $target, $lvl, "{}: {}", vec.connect(": "), format!($($arg)+)),
+                len => log!(target: $target, $lvl, "{}: {}", scopes[len - 1], format_args!($($arg)+)),
             }
-        }
-    );
-    ($lvl:expr, $($arg:tt)+) => (
-        {
-            let vec = $crate::__LOG_METAINFO.with(|f| f.borrow().clone());
-            match vec.len() {
+        })
+    });
+    ($lvl:expr, $($arg:tt)+) => ({
+        $crate::__LOG_SCOPES.with(|cell| {
+            let scopes = cell.borrow();
+            match scopes.len() {
                 0 => log!($lvl, $($arg)+),
-                _ => log!($lvl, "{}: {}", vec.connect(": "), format!($($arg)+)),
+                len => log!($lvl, "{}: {}", scopes[len - 1], format_args!($($arg)+)),
             }
-        }
-    )
+        })
+    })
 }
 
 #[macro_export]
-macro_rules! meta_assert {
-    ($condition:expr) => (
-        if !$condition {
-            let vec = $crate::__LOG_METAINFO.with(|f| f.borrow().clone());
-            match vec.len() {
-                0 => panic!(stringify!($condition)),
-                _ => panic!("{}: {}", vec.connect(": "), stringify!($condition)),
-            }
-        }
-    );
-    ($condition:expr, $($arg:tt)+) => (
-        if !$condition {
-            let vec = $crate::__LOG_METAINFO.with(|f| f.borrow().clone());
-            match vec.len() {
-                0 => panic!($($arg)+),
-                _ => panic!("{}: {}", vec.connect(": "), format!($($arg)+)),
-            }
+macro_rules! scoped_assert {
+    ($cond:expr) => (
+        if !$cond {
+            $crate::__LOG_SCOPES.with(|cell| {
+                let scopes = cell.borrow();
+                match scopes.len() {
+                    0 => panic!(concat!("assertion failed: ", stringify!($cond))),
+                    len => panic!(concat!("{}: assertion failed: ", stringify!($cond)), scopes[len - 1]),
+                }
+            })
         }
     );
+    ($cond:expr, $($arg:tt)+) => (
+        if !$cond {
+            $crate::__LOG_SCOPES.with(|cell| {
+                let scopes = cell.borrow();
+                match scopes.len() {
+                    0 => panic!($($arg)+),
+                    len => panic!("{}: {}", scopes[len - 1], format_args!($($arg)+)),
+                }
+            })
+        }
+    );
 }
 
 #[macro_export]
-macro_rules! meta_error {
+macro_rules! scoped_error {
     (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, $crate::LogLevel::Error, $($arg)*);
+        scoped_log!(target: $target, ::log::LogLevel::Error, $($arg)*);
     );
     ($($arg:tt)*) => (
-        meta_log!($crate::LogLevel::Error, $($arg)*);
+        scoped_log!(::log::LogLevel::Error, $($arg)*);
     )
 }
 
 #[macro_export]
-macro_rules! meta_warn {
+macro_rules! scoped_warn {
     (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, $crate::LogLevel::Warn, $($arg)*);
+        scoped_log!(target: $target, ::log::LogLevel::Warn, $($arg)*);
     );
     ($($arg:tt)*) => (
-        meta_log!($crate::LogLevel::Warn, $($arg)*);
+        scoped_log!(::log::LogLevel::Warn, $($arg)*);
     )
 }
 
 #[macro_export]
-macro_rules! meta_info {
+macro_rules! scoped_info {
     (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, $crate::LogLevel::Info, $($arg)*);
+        scoped_log!(target: $target, ::log::LogLevel::Info, $($arg)*);
     );
     ($($arg:tt)*) => (
-        meta_log!($crate::LogLevel::Info, $($arg)*);
+        scoped_log!(::log::LogLevel::Info, $($arg)*);
     )
 }
 
 #[macro_export]
-macro_rules! meta_debug {
+macro_rules! scoped_debug {
     (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, $crate::LogLevel::Debug, $($arg)*);
+        scoped_log!(target: $target, ::log::LogLevel::Debug, $($arg)*);
     );
     ($($arg:tt)*) => (
-        meta_log!($crate::LogLevel::Debug, $($arg)*);
+        scoped_log!(::log::LogLevel::Debug, $($arg)*);
     )
 }
 
 #[macro_export]
-macro_rules! meta_trace {
+macro_rules! scoped_trace {
     (target: $target:expr, $($arg:tt)*) => (
-        meta_log!(target: $target, $crate::LogLevel::Trace, $($arg)*);
+        scoped_log!(target: $target, ::log::LogLevel::Trace, $($arg)*);
     );
     ($($arg:tt)*) => (
-        meta_log!($crate::LogLevel::Trace, $($arg)*);
+        scoped_log!(::log::LogLevel::Trace, $($arg)*);
     )
 }
