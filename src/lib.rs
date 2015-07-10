@@ -60,7 +60,7 @@ macro_rules! register_logger_info {
 }
 
 #[macro_export]
-macro_rules! original_log {
+macro_rules! log {
     (target: $target:expr, $lvl:expr, $($arg:tt)+) => ({
         static _LOC: $crate::LogLocation = $crate::LogLocation {
             __line: line!(),
@@ -74,32 +74,16 @@ macro_rules! original_log {
                 (lvl <= $crate::LogLevel::Debug || !cfg!(log_level = "debug")) &&
                 (lvl <= $crate::LogLevel::Info || !cfg!(log_level = "info")) &&
                 lvl <= $crate::max_log_level() {
-            $crate::__log(lvl, $target, &_LOC, format_args!($($arg)+))
+            let target = $crate::__LOG_METAINFO.with(|vec| {
+                    match vec.borrow().len() {
+                        0 => $target,
+                        _ => format!("{}: {}", vec.borrow().connect(": "), $target).as_str(),
+                    }
+                });
+            $crate::__log(lvl, target, &_LOC, format_args!($($arg)+))
         }
     });
-    ($lvl:expr, $($arg:tt)+) => (original_log!(target: module_path!(), $lvl, $($arg)+))
-}
-
-#[macro_export]
-macro_rules! log {
-    (target: $target:expr, $lvl:expr, $($arg:tt)+) => (
-        {
-            let vec = $crate::__LOG_METAINFO.with(|f| f.borrow().clone());
-            match vec.len() {
-                0 => original_log!(target: $target, $lvl, $($arg)+),
-                _ => original_log!(target: $target, $lvl, "{}: {}", vec.connect(": "), format!($($arg)+)),
-            }
-        }
-    );
-    ($lvl:expr, $($arg:tt)+) => (
-        {
-            let vec = $crate::__LOG_METAINFO.with(|f| f.borrow().clone());
-            match vec.len() {
-                0 => original_log!($lvl, $($arg)+),
-                _ => original_log!($lvl, "{}: {}", vec.connect(": "), format!($($arg)+)),
-            }
-        }
-    )
+    ($lvl:expr, $($arg:tt)+) => (log!(target: module_path!(), $lvl, $($arg)+))
 }
 
 #[macro_export]
